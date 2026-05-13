@@ -1,45 +1,72 @@
-# 9router on Render.com — Google Drive Persistence
+# 9router — Serverless Deployment
 
-Run **9router** on Render.com's ephemeral containers with full data persistence via Google Drive. Provider tokens, combos, and settings survive every restart.
+Run **9router** on ephemeral containers (e.g. Render.com) with database persistence via rclone-compatible remote storage (Google Drive, S3, etc.).
+
+On every cold start the container downloads your `data.sqlite` from the remote before starting 9router. The remote is read-only from the container's perspective.
 
 ---
 
 ## How it works
 
 ```
-Container cold-starts
-        │
-        ▼
+Container starts
+      │
+      ▼
 Decode RCLONE_CONFIG_BASE64 → /tmp/rclone.conf
-        │
-        ▼
-rclone mount gdrive: → /mnt/gdrive
-        │
-        ▼
-/app/data ──symlink──▶ /mnt/gdrive/9router-data
-        │
-        ▼
-9router --port 20128 --no-browser --skip-update
-        │
-        ▼
-  [running] https://<your-render-url>
-            https://<your-render-url>/v1  ← OpenAI-compatible
+      │
+      ▼
+rclone copyto DB_PATH → DATA_DIR/db/data.sqlite
+      │
+      ▼
+9router starts
 ```
 
 ---
 
-## Setup
+## Step 1 — Initialize the database locally
 
-### Step 1 — Configure rclone locally
+The database needs to exist on the remote before you deploy. Set it up locally first.
 
-Install rclone on your machine and run the interactive setup:
+**Install 9router:**
+```bash
+npm install -g 9router
+```
 
+**Run it once to generate the database:**
+```bash
+9router
+```
+
+9router creates its data directory at `~/.9router/`. The database file is at:
+```
+~/.9router/db/data.sqlite
+```
+
+Open the dashboard (default `http://localhost:20128`), configure your providers, combos, and any settings you want persisted. Once done, stop 9router.
+
+---
+
+## Step 2 — Configure rclone
+
+Install rclone on your local machine: https://rclone.org/install/
+
+### Google Drive (OAuth — recommended for personal use)
+
+Run the interactive setup:
 ```bash
 rclone config
 ```
 
-Choose **Google Drive**, follow the OAuth flow, and name your remote (e.g. `gdrive`).  
-For a **Service Account** instead of OAuth, create the remote manually:
+Follow the prompts: choose **n** (new remote) → name it (e.g. `gdrive`) → type **drive** → complete the OAuth flow in your browser.
+
+Verify access:
+```bash
+rclone ls gdrive:
+```
+
+### Google Drive (Service Account — recommended for servers)
+
+Create a Service Account in Google Cloud Console, download the JSON key, and share your target Drive folder with the service account email. Then create the remote manually in `~/.config/rclone/rclone.conf`:
 
 ```ini
 [gdrive]
@@ -49,12 +76,36 @@ service_account_file = /path/to/sa-key.json
 root_folder_id = YOUR_FOLDER_ID
 ```
 
-Verify it works:
+---
+
+## Step 3 — Upload the database to remote storage
+
+Create a folder on your remote and upload the database:
+
 ```bash
-rclone ls gdrive:
+# Create the folder structure on Drive
+rclone mkdir gdrive:9router-data/db
+
+# Upload the database
+rclone copyto ~/.9router/db/data.sqlite gdrive:9router-data/db/data.sqlite
 ```
 
-### Step 2 — Encode your rclone config to base64
+Verify the upload:
+```bash
+rclone ls gdrive:9router-data/db
+# should show: data.sqlite
+```
+
+Note the full rclone path to your file — this becomes your `DB_PATH` env var:
+```
+gdrive:9router-data/db/data.sqlite
+```
+
+---
+
+## Step 4 — Encode the rclone config
+
+The container needs your rclone credentials at runtime via a base64-encoded env var.
 
 ```bash
 # Linux
@@ -66,58 +117,64 @@ base64 -i ~/.config/rclone/rclone.conf | tr -d '\n'
 
 Copy the output — this is your `RCLONE_CONFIG_BASE64` value.
 
-### Step 3 — Set env vars in Render
+---
+
+## Step 5 — Configure environment variables
 
 | Variable | Required | Description |
 |---|---|---|
-| `RCLONE_CONFIG_BASE64` | ✅ | Base64-encoded content of your `rclone.conf` |
-| `RCLONE_REMOTE` | optional | Remote name in your config (default: `gdrive`) |
-| `GDRIVE_MOUNT` | optional | Mount path in container (default: `/mnt/gdrive`) |
-| `PORT` | optional | 9router port (default: `20128`) |
-
-### Step 4 — Deploy on Render
-
-1. Push repo (with `Dockerfile` + `entrypoint.sh`) to GitHub
-2. **Render → New → Web Service → Docker**
-3. Set **Port** to `20128`
-4. Set **Health Check Path** to `/`
-5. Add env vars → Deploy
+| `RCLONE_CONFIG_BASE64` | Yes | Base64-encoded content of your `rclone.conf` |
+| `DB_PATH` | Yes | Full rclone path to `data.sqlite` on the remote (e.g. `gdrive:9router-data/db/data.sqlite`) |
+| `DATA_DIR` | No | Local base directory for 9router data (default: `~/.9router`) |
+| `PORT` | No | 9router port (default: `20128`) |
 
 ---
 
-## Updating your rclone config
+## Step 6 — Deploy on Render.com
 
-If you add a new provider or refresh tokens locally:
+1. Push this repository (with `Dockerfile` and `entrypoint.sh`) to GitHub.
+2. Go to **Render → New → Web Service**.
+3. Connect your GitHub repo and select **Docker** as the runtime.
+4. Set **Port** to `20128`.
+5. Under **Environment Variables**, add `RCLONE_CONFIG_BASE64` and `DB_PATH` (and any optional vars).
+6. Click **Deploy**.
+
+Render will build the Docker image, start the container, and the entrypoint will pull the database from your remote before launching 9router.
+
+Your service will be available at `https://<your-render-url>` and the OpenAI-compatible API at `https://<your-render-url>/v1`.
+
+---
+
+## Updating the database
+
+The container only reads from the remote on startup — it never writes back. If you change your local 9router config (new providers, combos, etc.) and want to update the remote:
 
 ```bash
-# Re-encode and update the env var in Render
+rclone copyto ~/.9router/db/data.sqlite gdrive:9router-data/db/data.sqlite
+```
+
+Then restart (or redeploy) your container so it picks up the new file.
+
+---
+
+## Updating the rclone config
+
+If you refresh OAuth tokens or add a new remote locally, re-encode and update the env var:
+
+```bash
 base64 -w 0 ~/.config/rclone/rclone.conf
 ```
 
-Paste the new value into Render's env var dashboard and redeploy (or just restart the service).
-
----
-
-## What persists on Drive
-
-Everything in `/app/data` is stored at `9router-data/` inside your Drive folder:
-
-| File | Contents |
-|---|---|
-| `db.json` | Combos, provider configs, usage stats |
-| `tokens/` | OAuth tokens (Claude Code, Codex, Copilot…) |
-| `settings.json` | Port, preferences |
-
-Authenticate a provider once → token saved to Drive → automatically restored on every restart.
+Paste the new value into Render's environment variables dashboard and redeploy.
 
 ---
 
 ## Troubleshooting
 
-| Symptom | Cause / Fix |
+| Symptom | Fix |
 |---|---|
-| `RCLONE_CONFIG_BASE64 is not set` | Add the env var in Render dashboard |
-| `no [remote] section found` | Base64 value is corrupt — re-encode and update |
-| Mount fails after 30s | Wrong remote name, or Drive OAuth token expired — re-run `rclone config` locally and re-encode |
-| Data not persisting | Check rclone log in Render's log stream for flush errors |
-| Dashboard unreachable | Confirm Render port is `20128` and health check path is `/` |
+| `Missing required env var: RCLONE_CONFIG_BASE64` | Add the env var in Render's dashboard |
+| `Missing required env var: DB_PATH` | Add the env var pointing to your remote sqlite file |
+| `Decoded rclone.conf has no [remote] section` | Base64 value is corrupt — re-encode and update |
+| `rclone copyto` fails | Verify `DB_PATH` is correct with `rclone ls <remote>:<path>` locally |
+| Dashboard unreachable | Confirm Render port is `20128` |
