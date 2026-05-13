@@ -4,14 +4,13 @@
 #
 # Required env vars:
 #   RCLONE_CONFIG_BASE64  — base64-encoded rclone.conf
-#   RCLONE_REMOTE         — remote name in rclone.conf      (e.g. gdrive)
-#   RCLONE_REMOTE_PATH    — path on the remote              (e.g. 9router-data)
+#   DB_PATH               — exact rclone path to data.sqlite  (e.g. gdrive:9router-data/db/data.sqlite)
 #
 # Optional env vars:
-#   PORT                  — 9router port                    (default: 20128)
+#   DATA_DIR              — local base directory              (default: ~/.9router)
+#   PORT                  — 9router port                      (default: 20128)
 #
-# On startup: downloads db.json + db/ from Drive → local.
-# No sync back. Drive is read-only from the container's perspective.
+# On startup: copies DB_PATH → DATA_DIR/db/data.sqlite (once, read-only from Drive).
 # ============================================================
 set -euo pipefail
 
@@ -27,7 +26,7 @@ step()  { echo -e "\n${CYAN}[9router]${NC} ── $* ──"; }
 step "Validating environment"
 
 MISSING=0
-for VAR in RCLONE_CONFIG_BASE64 RCLONE_REMOTE RCLONE_REMOTE_PATH; do
+for VAR in RCLONE_CONFIG_BASE64 DB_PATH; do
   if [[ -z "${!VAR:-}" ]]; then
     error "Missing required env var: $VAR"
     MISSING=1
@@ -35,12 +34,8 @@ for VAR in RCLONE_CONFIG_BASE64 RCLONE_REMOTE RCLONE_REMOTE_PATH; do
 done
 [[ $MISSING -eq 1 ]] && exit 1
 
-LOCAL_PATH="/root/.9router"
+LOCAL_BASE="${DATA_DIR:-$HOME/.9router}"
 RCLONE_CONFIG_PATH="/tmp/rclone.conf"
-
-REMOTE="${RCLONE_REMOTE}"
-REMOTE_PATH="${RCLONE_REMOTE_PATH}"
-REMOTE_TARGET="${REMOTE}:${REMOTE_PATH}"
 
 # ─────────────────────────────────────────────────────────────
 # 2. Decode rclone config
@@ -62,19 +57,18 @@ fi
 info "Config decoded. Remotes: $(grep '^\[' "${RCLONE_CONFIG_PATH}" | tr -d '[]' | tr '\n' ' ')"
 
 # ─────────────────────────────────────────────────────────────
-# 3. Restore: download db.json + db/ from Drive (once, on startup)
+# 3. Restore: copy data.sqlite from remote (once, on startup)
 # ─────────────────────────────────────────────────────────────
-step "Downloading config from Drive"
+step "Downloading database from remote"
 
-mkdir -p "${LOCAL_PATH}/db"
+LOCAL_DB="${LOCAL_BASE}/db/data.sqlite"
+mkdir -p "${LOCAL_BASE}/db"
 
-rclone copy "${REMOTE_TARGET}/db.json" "${LOCAL_PATH}" \
+rclone copyto "${DB_PATH}" "${LOCAL_DB}" \
   --config "${RCLONE_CONFIG_PATH}" \
-  --log-level INFO 2>&1 || warn "db.json not found on Drive — skipping."
+  --log-level INFO 2>&1
 
-rclone copy "${REMOTE_TARGET}/db" "${LOCAL_PATH}/db" \
-  --config "${RCLONE_CONFIG_PATH}" \
-  --log-level INFO 2>&1 || warn "db/ not found on Drive — skipping."
+info "Database copied to ${LOCAL_DB}"
 
 # ─────────────────────────────────────────────────────────────
 # 4. Start 9router
