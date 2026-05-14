@@ -9,7 +9,7 @@ Run **9router** on Render.com using its [Secret Files](https://docs.render.com/s
 ### 1 — Run 9router locally
 
 ```bash
-docker run -it --rm -v ${PWD}:/root/.9router/db -p 20128:20128 mra00000/9router
+docker run -it --rm -v ${PWD}:/root/.9router/db -p 20128:20128 mra00000/9router-render
 ```
 
 Open the dashboard at `http://localhost:20128`, configure your providers and combos, then stop 9router.
