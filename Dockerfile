@@ -7,9 +7,9 @@ WORKDIR /root/.9router
 
 RUN mkdir db runtime
 
-RUN cd runtime && npm install --no-save better-sqlite3@12.6.2
+RUN cd runtime && npm install --no-save better-sqlite3@${BETTER_SQLITE3_VERSION}
 
-RUN npm install -g 9router better-sqlite3@12.6.2
+RUN npm install -g 9router better-sqlite3@${BETTER_SQLITE3_VERSION}
 
 EXPOSE 20128
 
