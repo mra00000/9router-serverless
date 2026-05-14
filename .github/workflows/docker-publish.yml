@@ -24,3 +24,11 @@ jobs:
           context: .
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/9router-serverless:latest
+
+      - name: Update Docker Hub description
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ secrets.DOCKERHUB_USERNAME }}/9router-serverless
+          readme-filepath: ./README.md
