@@ -1,16 +1,15 @@
-FROM node:22-slim
+FROM decolua/9router:0.4.46
 
-ENV PORT=20128
-ARG BETTER_SQLITE3_VERSION=12.6.2
+COPY entrypoint.sh /app/entrypoint.sh
 
-WORKDIR /root/.9router
+RUN chmod +x /app/entrypoint.sh
 
-RUN mkdir db runtime
+USER root
 
-RUN cd runtime && npm install --no-save better-sqlite3@${BETTER_SQLITE3_VERSION}
+RUN apk add --no-cache rclone
 
-RUN npm install -g 9router better-sqlite3@${BETTER_SQLITE3_VERSION}
+USER node
 
 EXPOSE 20128
 
-ENTRYPOINT ["sh", "-c", "[ -f /etc/secrets/data.sqlite ] && cp /etc/secrets/data.sqlite ./db/data.sqlite; 9router"]
+ENTRYPOINT ["sh", "/app/entrypoint.sh"]
