@@ -71,10 +71,3 @@ rclone copyto "${DB_PATH}" "${LOCAL_DB}" \
   --log-level INFO 2>&1
 
 info "Database copied to ${LOCAL_DB}"
-
-# ─────────────────────────────────────────────────────────────
-# 4. Start 9router
-# ─────────────────────────────────────────────────────────────
-step "Starting 9router"
-
-exec node /app/server.js

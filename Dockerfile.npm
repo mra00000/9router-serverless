@@ -1,7 +1,15 @@
 FROM node:20-slim
 
+COPY sync_db.sh /sync_db.sh
+
+RUN chmod +x /app/sync_db.sh
+
+RUN apt-get update \
+    && apt-get install -y rclone \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN npm install -g 9router
 
 EXPOSE 20128
 
-ENTRYPOINT [ "9router" ]
+ENTRYPOINT ["sh", "-c", "sh /sync_db.sh && node server.js"]
