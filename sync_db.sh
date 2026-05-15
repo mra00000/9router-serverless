@@ -25,19 +25,19 @@ step()  { printf "\n${CYAN}[9router]${NC} ── %s ──\n" "$*"; }
 # ─────────────────────────────────────────────────────────────
 step "Validating environment"
 
-MISSING=0
 if [ -z "${RCLONE_CONFIG_BASE64:-}" ]; then
-  error "Missing required env var: RCLONE_CONFIG_BASE64"
-  MISSING=1
+  warn "RCLONE_CONFIG_BASE64 not set — skipping DB sync, starting with empty/existing database."
+  exit 0
 fi
+
 if [ -z "${DB_PATH:-}" ]; then
-  error "Missing required env var: DB_PATH"
-  MISSING=1
+  error "Missing required env var: DB_PATH (required when RCLONE_CONFIG_BASE64 is set)"
+  exit 1
 fi
-[ "$MISSING" -eq 1 ] && exit 1
 
 LOCAL_BASE="${DATA_DIR:-$HOME/.9router}"
 RCLONE_CONFIG_PATH="/tmp/rclone.conf"
+trap 'rm -f "${RCLONE_CONFIG_PATH}"' EXIT
 
 # ─────────────────────────────────────────────────────────────
 # 2. Decode rclone config

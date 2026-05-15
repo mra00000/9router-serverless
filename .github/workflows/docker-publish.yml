@@ -24,3 +24,11 @@ jobs:
           context: .
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/9router-render:latest
+
+      - name: Build and push (npm)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.npm
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/9router-render:npm
