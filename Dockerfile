@@ -1,4 +1,4 @@
-FROM decolua/9router:0.4.46
+FROM decolua/9router
 
 USER root
 
